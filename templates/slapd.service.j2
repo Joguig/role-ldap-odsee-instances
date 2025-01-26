@@ -1,0 +1,13 @@
+# {{ ansible_managed }}
+[Unit]
+Description=ODSEE 11 - instance {{ instanceName }}
+
+[Service]
+Type=forking
+PIDFile={{ instanceHome }}/{{ instanceName }}/logs/pid
+ExecStart={{ odseeBin }}/dsadm start {{ instanceHome }}/{{ instanceName }}
+ExecStop={{ odseeBin }}/dsadm stop {{ instanceHome }}/{{ instanceName }}
+
+[Install]
+WantedBy=multi-user.target
+

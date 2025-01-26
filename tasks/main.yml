@@ -1,0 +1,79 @@
+---
+
+- name: 'Verification existance du rep de destination pour le password'
+  file:
+    path: '{{ instancePasswordDir }}'
+    state: directory
+  tags:
+   - password
+
+- name: 'Creation fichiers password'
+  copy:
+    content: '{{ instancePassword }}'
+    dest: '{{ instancePasswordDir }}/{{ instancePasswordFile }}'
+    mode: 'u=r,g=,o='
+    owner: root
+  tags:
+   - password
+
+- name: 'Verification instance existante'
+  stat:
+    path: '{{ instanceHome }}/{{ instanceName }}'
+  register: check_inst
+
+- name: 'Creation repertoires instance'
+  file:
+    path: '{{ instanceHome }}'
+    state: 'directory'
+  when: check_inst.stat.exists == False
+
+- name: 'Creation instances'
+  shell: '{{ odseeBin }}/dsadm create -p {{ instancePort }} -P {{ instancePortSecure }} -w "{{ instancePasswordDir }}/{{ instancePasswordFile }}" {{ instanceHome }}/{{ instanceName }}'
+  when: check_inst.stat.exists == False
+
+- name: 'Download des extensions de schema'
+  local_action:
+    module: get_url
+    url: '{{ item.url }}'
+    dest: '{{ InstallBinTmp }}/'
+    checksum: '{{ item.sum }}'
+  run_once: yes
+  loop: "{{ instanceSchemas }}"
+  become: no
+  when: not remoteSrc | bool
+
+- name: 'Copie des extensions de schema dans les instances'
+  copy:
+    src: '{{ item }}'
+    dest: '{{ instanceHome }}/{{ instanceName }}/config/schema/'
+    owner: 'root'
+    mode: '0600'
+  with_fileglob:
+    - '{{ InstallBinTmp }}/*.ldif'
+  when: not remoteSrc | bool
+
+- name: 'Download des extensions de schema directement sur les serveurs'
+  get_url:
+    url: '{{ item.url }}'
+    dest: '{{ instanceHome }}/{{ instanceName }}/config/schema/'
+    checksum: '{{ item.sum }}'
+    owner: 'root'
+    mode: '0600'
+  loop: "{{ instanceSchemas }}"
+  when: remoteSrc | bool
+
+- name: 'Generation .service pour systemd'
+  template:
+    src: "slapd.service.j2"
+    dest: "/etc/systemd/system/{{ instanceName }}.service"
+    owner: root
+    group: root
+    mode: 0644
+
+- name: 'Demarrage instance'
+  systemd:
+    name: "{{ instanceName }}"
+    daemon_reload: yes
+    enabled: "{{ instanceAutoStart }}"
+    state: "started"
+
